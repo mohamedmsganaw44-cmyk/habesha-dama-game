@@ -1,1 +1,1397 @@
+<!DOCTYPE html>
+<html lang="am">
 
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>ሀበሻ ዳማ - Online</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #171717;
+  color: white;
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.game {
+  width: 100%;
+  max-width: 620px;
+  padding: 15px;
+  text-align: center;
+}
+
+h1 {
+  margin: 5px 0;
+  font-size: 31px;
+}
+
+.subtitle {
+  color: #bbb;
+  margin-bottom: 8px;
+}
+
+#playerInfo {
+  color: #7dd3fc;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+#status {
+  min-height: 42px;
+  padding: 8px;
+  margin-bottom: 10px;
+  font-size: 17px;
+  font-weight: bold;
+}
+
+#board {
+  width: min(94vw, 560px);
+  height: min(94vw, 560px);
+  margin: auto;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  border: 5px solid #080808;
+  box-shadow: 0 8px 25px rgba(0,0,0,.65);
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.light {
+  background: #f0d9b5;
+}
+
+.dark {
+  background: #875a32;
+}
+
+.piece {
+  width: 72%;
+  height: 72%;
+  border-radius: 50%;
+  border: 3px solid #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  font-weight: bold;
+  box-shadow: 0 4px 8px rgba(0,0,0,.55);
+  transition: .12s;
+}
+
+.piece:hover {
+  transform: scale(1.06);
+}
+
+.pepsi {
+  background: #005cb9;
+  box-shadow:
+    inset 0 0 0 3px rgba(255,255,255,.9),
+    0 4px 8px rgba(0,0,0,.55);
+}
+
+.coca {
+  background: #d71920;
+  box-shadow:
+    inset 0 0 0 3px rgba(255,255,255,.9),
+    0 4px 8px rgba(0,0,0,.55);
+}
+
+.selected {
+  outline: 5px solid #ffe600;
+  outline-offset: 2px;
+}
+
+.king {
+  color: #ffd700;
+  font-size: 29px;
+  text-shadow: 1px 2px 3px #000;
+}
+
+.controls {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#restart {
+  background: white;
+  color: #111;
+}
+
+#efata {
+  background: #ffca28;
+  color: #111;
+}
+
+#efata:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+#restart:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.online {
+  color: #4ade80;
+}
+
+.offline {
+  color: #f87171;
+}
+</style>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+</head>
+
+<body>
+
+<div class="game">
+
+<h1>🥤 ሀበሻ ዳማ</h1>
+
+<div class="subtitle">
+  🔵 Pepsi &nbsp; VS &nbsp; 🔴 Coca-Cola
+</div>
+
+<div id="playerInfo">
+  🌐 ኦንላይን እየተገናኘ...
+</div>
+
+<div id="status">
+  ጨዋታው እየተጀመረ ነው...
+</div>
+
+<div id="board"></div>
+
+<div class="controls">
+  <button id="efata" onclick="callEfata()" disabled>
+    ⚠️ እፋታ
+  </button>
+
+  <button id="restart" onclick="resetGame()" disabled>
+    🔄 እንደገና ጀምር
+  </button>
+</div>
+
+</div>
+
+<script>
+
+/* =====================================================
+   FIREBASE CONFIG
+   ===================================================== */
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCrtEgY-uUywx3TF323Etq3y_YN7oleLAQ",
+  authDomain: "habesha-dama-game.firebaseapp.com",
+  databaseURL: "https://habesha-dama-game-default-rtdb.firebaseio.com",
+  projectId: "habesha-dama-game",
+  storageBucket: "habesha-dama-game.firebasestorage.app",
+  messagingSenderId: "722440938191",
+  appId: "1:722440938191:web:072bc2aeec8c4e290b4dba"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.database();
+const gameRef = db.ref("habesha-dama/game1");
+
+const playersRef = gameRef.child("players");
+
+
+/* =====================================================
+   VARIABLES
+   ===================================================== */
+
+const board = document.getElementById("board");
+const statusText = document.getElementById("status");
+const playerInfo = document.getElementById("playerInfo");
+
+const efataButton = document.getElementById("efata");
+const restartButton = document.getElementById("restart");
+
+let pieces = [];
+
+let currentPlayer = "pepsi";
+
+let selectedPiece = null;
+
+let gameOver = false;
+
+let efataAvailable = false;
+
+let efataTargetIndex = null;
+
+let efataTarget = null;
+
+let myColor = null;
+
+let myId = localStorage.getItem("habeshaDamaPlayerId");
+
+let spectator = false;
+
+
+/* =====================================================
+   PLAYER ID
+   ===================================================== */
+
+if (!myId) {
+  myId =
+    "player_" +
+    Date.now() +
+    "_" +
+    Math.random().toString(36).substring(2, 10);
+
+  localStorage.setItem("habeshaDamaPlayerId", myId);
+}
+
+
+/* =====================================================
+   CLAIM PLAYER
+   ===================================================== */
+
+async function claimPlayer(color) {
+
+  const ref = playersRef.child(color);
+
+  const result = await ref.transaction(current => {
+
+    if (current === null) {
+      return myId;
+    }
+
+    return;
+
+  });
+
+  return result.committed;
+}
+
+
+/* =====================================================
+   JOIN GAME
+   ===================================================== */
+
+async function joinGame() {
+
+  try {
+
+    /*
+      If this phone already has a role,
+      use the same role again.
+    */
+
+    const savedColor =
+      localStorage.getItem("habeshaDamaColor");
+
+    if (savedColor === "pepsi" || savedColor === "coca") {
+
+      const claimed = await claimPlayer(savedColor);
+
+      if (claimed) {
+
+        myColor = savedColor;
+
+      } else {
+
+        localStorage.removeItem("habeshaDamaColor");
+
+      }
+    }
+
+
+    /*
+      Try Pepsi first
+    */
+
+    if (!myColor) {
+
+      const pepsiClaimed = await claimPlayer("pepsi");
+
+      if (pepsiClaimed) {
+
+        myColor = "pepsi";
+
+        localStorage.setItem(
+          "habeshaDamaColor",
+          "pepsi"
+        );
+
+      }
+
+    }
+
+
+    /*
+      Try Coca-Cola
+    */
+
+    if (!myColor) {
+
+      const cocaClaimed = await claimPlayer("coca");
+
+      if (cocaClaimed) {
+
+        myColor = "coca";
+
+        localStorage.setItem(
+          "habeshaDamaColor",
+          "coca"
+        );
+
+      }
+
+    }
+
+
+    /*
+      Third player = spectator
+    */
+
+    if (!myColor) {
+
+      spectator = true;
+
+      playerInfo.textContent =
+        "👀 ተመልካች ነህ — ሁለቱ ተጫዋቾች እየተጫወቱ ነው";
+
+      playerInfo.className = "";
+
+    } else {
+
+      playerInfo.textContent =
+        myColor === "pepsi"
+          ? "🎮 አንተ 🔵 Pepsi ነህ"
+          : "🎮 አንተ 🔴 Coca-Cola ነህ";
+
+      playerInfo.className = "online";
+
+      restartButton.disabled = false;
+
+    }
+
+    listenToGame();
+
+  } catch (error) {
+
+    console.error(error);
+
+    playerInfo.textContent =
+      "❌ Firebase ላይ መገናኘት አልተቻለም";
+
+    playerInfo.className = "offline";
+
+  }
+
+}
+
+
+/* =====================================================
+   LISTEN TO GAME
+   ===================================================== */
+
+function listenToGame() {
+
+  gameRef.on("value", snapshot => {
+
+    const data = snapshot.val();
+
+    if (!data || !data.pieces) {
+
+      createNewGame();
+
+      return;
+
+    }
+
+    pieces = data.pieces || [];
+
+    currentPlayer =
+      data.currentPlayer || "pepsi";
+
+    gameOver =
+      data.gameOver || false;
+
+    efataAvailable =
+      data.efataAvailable || false;
+
+    if (
+      data.efataTargetIndex !== undefined &&
+      data.efataTargetIndex !== null
+    ) {
+
+      efataTargetIndex =
+        data.efataTargetIndex;
+
+      efataTarget =
+        pieces[efataTargetIndex] || null;
+
+    } else {
+
+      efataTargetIndex = null;
+
+      efataTarget = null;
+
+    }
+
+    selectedPiece = null;
+
+    updateStatusText();
+
+    updateEfataButton();
+
+    drawBoard();
+
+  });
+
+}
+
+
+/* =====================================================
+   CREATE NEW GAME
+   ===================================================== */
+
+function createNewGame() {
+
+  createPieces();
+
+  currentPlayer = "pepsi";
+
+  gameOver = false;
+
+  efataAvailable = false;
+
+  efataTargetIndex = null;
+
+  efataTarget = null;
+
+  saveGame();
+
+}
+
+
+/* =====================================================
+   SAVE GAME
+   ===================================================== */
+
+function saveGame() {
+
+  gameRef.update({
+
+    pieces: pieces,
+
+    currentPlayer: currentPlayer,
+
+    gameOver: gameOver,
+
+    efataAvailable: efataAvailable,
+
+    efataTargetIndex: efataTargetIndex
+
+  });
+
+}
+
+
+/* =====================================================
+   DRAW BOARD
+   ===================================================== */
+
+function drawBoard() {
+
+  board.innerHTML = "";
+
+  for (let row = 0; row < 8; row++) {
+
+    for (let col = 0; col < 8; col++) {
+
+      const cell =
+        document.createElement("div");
+
+      cell.className =
+        "cell " +
+        ((row + col) % 2 === 0
+          ? "light"
+          : "dark");
+
+
+      const piece =
+        getPiece(row, col);
+
+
+      if (piece) {
+
+        const p =
+          document.createElement("div");
+
+        p.className =
+          "piece " + piece.color;
+
+
+        if (piece.king) {
+
+          p.classList.add("king");
+
+          p.textContent = "♛";
+
+        }
+
+
+        if (selectedPiece === piece) {
+
+          p.classList.add("selected");
+
+        }
+
+
+        p.onclick = function(e) {
+
+          e.stopPropagation();
+
+          selectPiece(piece);
+
+        };
+
+
+        cell.appendChild(p);
+
+      }
+
+
+      cell.onclick = function() {
+
+        moveTo(row, col);
+
+      };
+
+
+      board.appendChild(cell);
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   GET PIECE
+   ===================================================== */
+
+function getPiece(row, col) {
+
+  return pieces.find(
+    p => p.row === row && p.col === col
+  );
+
+}
+
+
+/* =====================================================
+   BOARD HELPERS
+   ===================================================== */
+
+function inside(row, col) {
+
+  return (
+    row >= 0 &&
+    row < 8 &&
+    col >= 0 &&
+    col < 8
+  );
+
+}
+
+
+function directions(piece) {
+
+  if (piece.king) {
+
+    return [
+      [-1, -1],
+      [-1, 1],
+      [1, -1],
+      [1, 1]
+    ];
+
+  }
+
+
+  if (piece.color === "pepsi") {
+
+    return [
+      [1, -1],
+      [1, 1]
+    ];
+
+  }
+
+
+  return [
+    [-1, -1],
+    [-1, 1]
+  ];
+
+}
+
+
+/* =====================================================
+   CAPTURE MOVES
+   ===================================================== */
+
+function captureMoves(piece) {
+
+  const result = [];
+
+  for (const [dr, dc] of directions(piece)) {
+
+    const middleRow =
+      piece.row + dr;
+
+    const middleCol =
+      piece.col + dc;
+
+    const landingRow =
+      piece.row + dr * 2;
+
+    const landingCol =
+      piece.col + dc * 2;
+
+
+    if (
+      !inside(middleRow, middleCol) ||
+      !inside(landingRow, landingCol)
+    ) {
+
+      continue;
+
+    }
+
+
+    const middlePiece =
+      getPiece(middleRow, middleCol);
+
+    const landingPiece =
+      getPiece(landingRow, landingCol);
+
+
+    if (
+      middlePiece &&
+      middlePiece.color !== piece.color &&
+      !landingPiece
+    ) {
+
+      if (
+        !piece.king &&
+        middlePiece.king
+      ) {
+
+        continue;
+
+      }
+
+
+      result.push({
+
+        row: landingRow,
+
+        col: landingCol,
+
+        captured: middlePiece
+
+      });
+
+    }
+
+  }
+
+  return result;
+
+}
+
+
+/* =====================================================
+   NORMAL MOVES
+   ===================================================== */
+
+function normalMoves(piece) {
+
+  const result = [];
+
+  for (const [dr, dc] of directions(piece)) {
+
+    const row =
+      piece.row + dr;
+
+    const col =
+      piece.col + dc;
+
+
+    if (
+      inside(row, col) &&
+      !getPiece(row, col)
+    ) {
+
+      result.push({
+
+        row: row,
+
+        col: col
+
+      });
+
+    }
+
+  }
+
+  return result;
+
+}
+
+
+/* =====================================================
+   SELECT PIECE
+   ===================================================== */
+
+function selectPiece(piece) {
+
+  if (gameOver) return;
+
+  if (spectator) return;
+
+  if (piece.color !== myColor) return;
+
+  if (currentPlayer !== myColor) return;
+
+  selectedPiece = piece;
+
+  drawBoard();
+
+}
+
+
+/* =====================================================
+   MOVE
+   ===================================================== */
+
+function moveTo(row, col) {
+
+  if (gameOver) return;
+
+  if (spectator) return;
+
+  if (!selectedPiece) return;
+
+  if (currentPlayer !== myColor) return;
+
+
+  const piece =
+    selectedPiece;
+
+
+  const captures =
+    captureMoves(piece);
+
+
+  const capture =
+    captures.find(
+      m =>
+        m.row === row &&
+        m.col === col
+    );
+
+
+  /*
+    CAPTURE
+  */
+
+  if (capture) {
+
+    pieces =
+      pieces.filter(
+        p => p !== capture.captured
+      );
+
+
+    piece.row = row;
+
+    piece.col = col;
+
+
+    promote(piece);
+
+
+    const moreCaptures =
+      captureMoves(piece);
+
+
+    if (moreCaptures.length > 0) {
+
+      selectedPiece = piece;
+
+      efataAvailable = false;
+
+      efataTarget = null;
+
+      efataTargetIndex = null;
+
+      statusText.textContent =
+        piece.color === "pepsi"
+          ? "🔵 ተጨማሪ መብላት ይችላል"
+          : "🔴 ተጨማሪ መብላት ይችላል";
+
+      updateEfataButton();
+
+      saveGame();
+
+      drawBoard();
+
+      return;
+
+    }
+
+
+    selectedPiece = null;
+
+    efataAvailable = false;
+
+    efataTarget = null;
+
+    efataTargetIndex = null;
+
+    changeTurn();
+
+    return;
+
+  }
+
+
+  /*
+    NORMAL MOVE
+  */
+
+  const moves =
+    normalMoves(piece);
+
+
+  const move =
+    moves.find(
+      m =>
+        m.row === row &&
+        m.col === col
+    );
+
+
+  if (!move) return;
+
+
+  /*
+    EFATA
+  */
+
+  const allCapturePieces =
+    pieces.filter(
+      p =>
+        p.color === currentPlayer &&
+        captureMoves(p).length > 0
+    );
+
+
+  const pieceCouldCapture =
+    captureMoves(piece).length > 0;
+
+
+  if (allCapturePieces.length > 0) {
+
+    if (pieceCouldCapture) {
+
+      efataTarget =
+        piece;
+
+    } else {
+
+      efataTarget =
+        allCapturePieces[0];
+
+    }
+
+    efataTargetIndex =
+      pieces.indexOf(efataTarget);
+
+    efataAvailable = true;
+
+  } else {
+
+    efataTarget = null;
+
+    efataTargetIndex = null;
+
+    efataAvailable = false;
+
+  }
+
+
+  piece.row = row;
+
+  piece.col = col;
+
+
+  promote(piece);
+
+
+  selectedPiece = null;
+
+
+  changeTurn();
+
+}
+
+
+/* =====================================================
+   PROMOTION
+   ===================================================== */
+
+function promote(piece) {
+
+  if (piece.king) return;
+
+
+  if (
+    piece.color === "pepsi" &&
+    piece.row === 7
+  ) {
+
+    piece.king = true;
+
+  }
+
+
+  if (
+    piece.color === "coca" &&
+    piece.row === 0
+  ) {
+
+    piece.king = true;
+
+  }
+
+}
+
+
+/* =====================================================
+   CHANGE TURN
+   ===================================================== */
+
+function changeTurn() {
+
+  currentPlayer =
+    currentPlayer === "pepsi"
+      ? "coca"
+      : "pepsi";
+
+
+  updateEfataButton();
+
+  checkWinner();
+
+  saveGame();
+
+  updateStatusText();
+
+  drawBoard();
+
+}
+
+
+/* =====================================================
+   STATUS
+   ===================================================== */
+
+function updateStatusText() {
+
+  if (gameOver) return;
+
+
+  if (spectator) {
+
+    statusText.textContent =
+      currentPlayer === "pepsi"
+        ? "🔵 Pepsi ተራው ነው"
+        : "🔴 Coca-Cola ተራው ነው";
+
+    return;
+
+  }
+
+
+  if (currentPlayer === myColor) {
+
+    if (
+      efataAvailable &&
+      efataTarget
+    ) {
+
+      statusText.textContent =
+        "⚠️ እፋታ ሊጠራ ይችላል";
+
+    } else {
+
+      statusText.textContent =
+        "🎮 ተራህ ነው";
+
+    }
+
+  } else {
+
+    statusText.textContent =
+      currentPlayer === "pepsi"
+        ? "🔵 Pepsi ተራው ነው — ተጠብቅ"
+        : "🔴 Coca-Cola ተራው ነው — ተጠብቅ";
+
+  }
+
+}
+
+
+/* =====================================================
+   EFATA BUTTON
+   ===================================================== */
+
+function updateEfataButton() {
+
+  efataButton.disabled =
+    spectator ||
+    currentPlayer !== myColor ||
+    !efataAvailable ||
+    !efataTarget ||
+    gameOver;
+
+}
+
+
+/* =====================================================
+   CALL EFATA
+   ===================================================== */
+
+function callEfata() {
+
+  if (spectator) return;
+
+  if (currentPlayer !== myColor) return;
+
+  if (
+    !efataAvailable ||
+    !efataTarget ||
+    gameOver
+  ) return;
+
+
+  const target =
+    pieces[efataTargetIndex];
+
+
+  if (!target) return;
+
+
+  pieces =
+    pieces.filter(
+      p => p !== target
+    );
+
+
+  efataAvailable = false;
+
+  efataTarget = null;
+
+  efataTargetIndex = null;
+
+
+  statusText.textContent =
+    "⚠️ እፋታ! መብላት የሚችለው ጠጠር ተወግዷል።";
+
+
+  checkWinner();
+
+  saveGame();
+
+  drawBoard();
+
+}
+
+
+/* =====================================================
+   WINNER
+   ===================================================== */
+
+function playerHasCapture(color) {
+
+  return pieces.some(
+    piece =>
+      piece.color === color &&
+      captureMoves(piece).length > 0
+  );
+
+}
+
+
+function checkWinner() {
+
+  const pepsi =
+    pieces.filter(
+      p => p.color === "pepsi"
+    );
+
+
+  const coca =
+    pieces.filter(
+      p => p.color === "coca"
+    );
+
+
+  if (pepsi.length === 0) {
+
+    finish("🔴 Coca-Cola");
+
+    return;
+
+  }
+
+
+  if (coca.length === 0) {
+
+    finish("🔵 Pepsi");
+
+    return;
+
+  }
+
+
+  if (!hasAnyMove(currentPlayer)) {
+
+    const winner =
+      currentPlayer === "pepsi"
+        ? "🔴 Coca-Cola"
+        : "🔵 Pepsi";
+
+
+    finish(winner);
+
+  }
+
+}
+
+
+function hasAnyMove(color) {
+
+  const player =
+    pieces.filter(
+      p => p.color === color
+    );
+
+
+  if (playerHasCapture(color)) {
+
+    return true;
+
+  }
+
+
+  for (const piece of player) {
+
+    if (
+      normalMoves(piece).length > 0
+    ) {
+
+      return true;
+
+    }
+
+  }
+
+
+  return false;
+
+}
+
+
+/* =====================================================
+   FINISH
+   ===================================================== */
+
+function finish(winner) {
+
+  gameOver = true;
+
+  selectedPiece = null;
+
+  efataAvailable = false;
+
+  efataTarget = null;
+
+  efataTargetIndex = null;
+
+
+  updateEfataButton();
+
+
+  statusText.textContent =
+    `🏆 ${winner} አሸነፈ!`;
+
+
+  saveGame();
+
+  drawBoard();
+
+}
+
+
+/* =====================================================
+   RESET
+   ===================================================== */
+
+function resetGame() {
+
+  if (spectator) return;
+
+  createPieces();
+
+  currentPlayer = "pepsi";
+
+  gameOver = false;
+
+  selectedPiece = null;
+
+  efataAvailable = false;
+
+  efataTarget = null;
+
+  efataTargetIndex = null;
+
+  saveGame();
+
+}
+
+
+/* =====================================================
+   CREATE PIECES
+   ===================================================== */
+
+function createPieces() {
+
+  pieces = [];
+
+
+  for (
+    let row = 0;
+    row < 3;
+    row++
+  ) {
+
+    for (
+      let col = 0;
+      col < 8;
+      col++
+    ) {
+
+      if (
+        (row + col) % 2 === 1
+      ) {
+
+        pieces.push({
+
+          row: row,
+
+          col: col,
+
+          color: "pepsi",
+
+          king: false
+
+        });
+
+      }
+
+    }
+
+  }
+
+
+  for (
+    let row = 5;
+    row < 8;
+    row++
+  ) {
+
+    for (
+      let col = 0;
+      col < 8;
+      col++
+    ) {
+
+      if (
+        (row + col) % 2 === 1
+      ) {
+
+        pieces.push({
+
+          row: row,
+
+          col: col,
+
+          color: "coca",
+
+          king: false
+
+        });
+
+      }
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   START
+   ===================================================== */
+
+joinGame();
+
+</script>
+
+</body>
+</html>
